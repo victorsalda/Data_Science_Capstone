@@ -1,0 +1,754 @@
+---
+title: "Capstone Peer-graded Assignment 1: Milestone Report"
+output: html_document
+---
+
+###**Victor D. Saldaña C.**
+######PhD(c) in Geoinformatics Engineering
+######Technical University of Madrid (Spain)
+######LinkedIn: https://es.linkedin.com/in/victorsalda
+######Github: https://github.com/victorsalda
+######Rpubs: http://rpubs.com/victorsalda
+######email: victorsalda@hotmail.com
+######*December, 2016*
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+###**Summary of the Captone & Milestone Report.**
+
+####**Capstone.**
+
+The goal of the capstone in the Data Science Specialization is to demonstrate the skill set obtained along the courses by creating a public data product. In this case, the product is a predictive text model application similar to the one on mobile devices. The data come from the HC corpora web site (http://www.corpora.heliohost.org) where is possible to download (freely) a collection of corpora (samples of real world texts) for more than 60 available languages. The capstone is presented in partnership with "Swiftkey" (https://swiftkey.com), one of the worldwide leaders in using data science techniques to build keyboards for Android and iOS devices.
+
+####**Milestone Report.**
+
+The Milestone Report shows the outcomes of the first steps (after getting the data) on building the predictive text product that is a shiny app that will be pitched using a markdown presentation. It is divided in eight sections including data cleaning, an exploratory data analysis, and a word frequencies study (unigrams, bigrams and trigrams).  
+
+###**1. Load packages.**
+
+Let's load the packages needed. If you haven't download them do it first.
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+library("stringi")
+library("NLP")
+library("tm")
+library("SnowballC")
+library("reshape")
+library("dplyr")
+library("stringr")
+library("tokenizers")
+library("wordcloud")
+```
+
+###**2. Loading original files and getting some stats.** 
+
+Let's read and load the text files that are going to be used to build the predictive text model. The HC data sets include three files for four languages. These three text files are one from blog sites, another from news sites and one more from Twitter. Meanwhile, the four languages are Dutch, English, Finish and Russian. Therefore, there are available 12 text files, three by language. In this case, the English ones are going to be used.
+
+####**2.1. Loading original files.** 
+
+The first step is to read and load the original texts files. 
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Let's load the original files. 
+blogs<-readLines("en_US.blogs.txt", warn = FALSE)
+news<-readLines("en_US.news.txt", warn = FALSE)
+twitter<-readLines("en_US.twitter.txt", warn = FALSE)
+```
+
+####**2.2. Getting some stats.**
+
+Once the files were loaded is possible to get some statistical quantities such as size, number of lines, number of words, words by line, etc. in order to start getting familiar with the text data.
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Size by files (MB). 
+blogs_size<-round(file.info("en_US.blogs.txt")$size/1024^2,1)
+news_size<-round(file.info("en_US.news.txt")$size/1024^2,1)
+twitter_size<-round(file.info("en_US.twitter.txt")$size/1024^2,1)
+
+#Number of lines by files (including white lines).
+blogs_lines<-length(blogs)
+news_lines<-length(news)
+twitter_lines<-length(twitter)
+
+#Number of words by files.
+blogs_words<-sum(stri_count_words(blogs))
+news_words<-sum(stri_count_words(news))
+twitter_words<-sum(stri_count_words(twitter))
+
+#Number of sentences by files.
+blogs_sentences<-sum(stri_count_boundaries(blogs, type="sentence"))
+news_sentences<-sum(stri_count_boundaries(news, type="sentence"))
+twitter_sentences<-sum(stri_count_boundaries(twitter, type="sentence"))
+
+#Number of characters by files (including white spaces).
+blogs_chars<-sum(stri_count_boundaries(blogs, type="character"))
+news_chars<-sum(stri_count_boundaries(news, type="character"))
+twitter_chars<-sum(stri_count_boundaries(twitter, type="character"))
+
+#Table with stats.
+stats_complete_files<-data.frame(File = c("blogs", "news", "twitter"),
+                      Size = c(paste (blogs_size, "MB"), paste(news_size, "MB"), paste(twitter_size, "MB")),
+                      Lines = c(blogs_lines,news_lines,twitter_lines),
+                      Sentences = c(blogs_sentences,news_sentences,twitter_sentences),
+                      Words = c(blogs_words,news_words,twitter_words),
+                      chars = c(blogs_chars,news_chars,twitter_chars),
+                      Sents_by_Line =  c(round((blogs_sentences/blogs_lines),5),
+                                       round((news_sentences/news_lines),5),
+                                       round((twitter_sentences/twitter_lines),5)),
+                      Words_by_Sent =  c(round((blogs_words/blogs_sentences),5),
+                                       round((news_words/news_sentences),5),
+                                       round((twitter_words/twitter_sentences),5)),
+                      Words_by_line =  c(round((blogs_words/blogs_lines),5),
+                                       round((news_words/news_lines),5),
+                                       round((twitter_words/twitter_lines),5)),
+                      Chars_by_word =  c(round((blogs_chars/blogs_words),5),
+                                       round((news_chars/news_words),5),
+                                       round((twitter_chars/twitter_words),5)))
+```
+
+```{r echo=FALSE, eval=FALSE, warning=FALSE, message=FALSE}
+#saving outcomes. 
+write.csv(stats_complete_files, "stats_complete_files.csv", fileEncoding = "UTF-8")
+```
+
+```{r echo=FALSE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Reading files to show outcomes. 
+read.csv("stats_complete_files.csv")
+```
+
+As seen on the table the twitter file is, by far, the one with more lines (2.360.148), follow by the one from blogs (899.288) and the one from news (77.259). However, as Twitter data is limited to 140 characters the blogs has more words (30.093.411 vs 37.546.246, respectively). Likewise, another important fact is that Twitter data has the lowest average of words by line (approx. 7.96) which has sense due to the limitation of characters that has the famous social network.
+
+###**3. Sample and trainig data.**
+
+Due to the size of files and numbers of lines, sentences, words and characters is not right to work with all data. The main reason is to avoid a long processing time while loading and cleaning the data. Therefore, next step is to sample from files certain quantity of lines. In this case, an stratified sampling of 10% from every file is carried out.  
+
+####**3.1. Sample and trainig data.** 
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#For reproducibility issues let's choose a seed.
+set.seed(555)
+
+#Sample files. 
+blogs_sample<-sample(blogs, round(length(blogs)*0.10,0), replace = FALSE)
+news_sample<-sample(news, round(length(news)*0.10,0), replace = FALSE)
+twitter_sample<-sample(twitter, round(length(twitter)*0.10,0), replace = FALSE)
+```
+
+####**3.2. Saving files.**
+
+After sampling is a good idea to export and save files.  
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Saving files.
+writeLines(blogs_sample, "blogs_sample.txt", useBytes = TRUE)
+writeLines(news_sample, "news_sample.txt", useBytes = TRUE)
+writeLines(twitter_sample, "twitter_sample.txt", useBytes = TRUE)
+```
+
+###**4. Data cleaning (preprocessing).**
+
+Now is necessary to clean the data to make it tidy. This step can be fairly time consuming and fastidious but is worth doing to assure a high quality predictive model and proper analyses. In this case, some useful functions from "tm" package are going to be used.     
+
+####**4.1. Tidy data.**
+
+In order to get tidy data is necessary to remove linguistic elements such as common words, symbols, numbers, extra white spaces or other meaningful elements that have no predictive power. Also, since "R" is case sensitive, is important to turn capital letters (uppercase) into small letters (lowercase) to avoid considering different words the same one. 
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Let's load the original files. 
+blogs_sample<-readLines("blogs_sample.txt", warn = TRUE )
+news_sample<-readLines("news_sample.txt", warn = TRUE)
+twitter_sample<-readLines("twitter_sample.txt", warn = TRUE)
+```
+
+```{r echo=TRUE, eval= FALSE, warning=FALSE, message=FALSE}
+#Let's remove all the numbers from text files.
+blogs_sample_1<-removeNumbers(blogs_sample)
+news_sample_1<-removeNumbers(news_sample)
+twitter_sample_1<-removeNumbers(twitter_sample)
+
+#Let’s remove common or stop words that are the most common words in a language, therefore, 
+#have not predictive power. Some examples of these words in English are: "me", "ours", "what", 
+#"there's" and "how". To know all the stop words use: stopwords("en").
+blogs_sample_2<-removeWords(blogs_sample_1,stopwords("en"))
+news_sample_2<-removeWords(news_sample_1,stopwords("en"))
+twitter_sample_2<-removeWords(twitter_sample_1,stopwords("en"))
+
+#The App should not predict profanity, i.e., as defined in Wikipedia: “bad language, strong 
+#language, coarse language, foul language, bad words, vulgar language, lewd language, choice 
+#words or expletives”. Let's remove all these kind of words by using a list from the GibHub's user
+#"tjrobinson". The list can be accessed at https://gist.githubusercontent.com/tjrobinson/2366772/raw/
+#97329ead3d5ab06160c3c7ac1d3bcefa4f66b164/profanity.csv
+profany_words_address<-"https://gist.githubusercontent.com/tjrobinson/2366772/raw/97329ead3d5ab06160c3c7ac1d3bcefa4f66b164/profanity.csv"
+profany_words<-readLines(profany_words_address, warn = FALSE)
+blogs_sample_3<-removeWords(blogs_sample_2, profany_words)
+news_sample_3<-removeWords(news_sample_2, profany_words)
+twitter_sample_3<-removeWords(twitter_sample_2, profany_words)
+
+#Stemming allows to remove common word endings, such as “ed”, "ing" "s" and “’s”. The goal 
+#is to reduce them to their word base (stem) form.  
+blogs_sample_4<-stemDocument(blogs_sample_3)
+news_sample_4<-stemDocument(news_sample_3)
+twitter_sample_4<-stemDocument(twitter_sample_3)
+
+#Let's remove some "punctuation symbols and special characters". The "tm" package has the built-in
+#function "removePunctuation" that is an excellent tool to eliminate these symbols and characters
+#that have no predictive power (see next code lines). However, there are two important issues. The
+#first one is that the function not only eliminates the punctuation symbols and special characters
+#but also removes the space. This situation in not all cases such as "@" in emails addresses or "/"
+#in alternative words, might be undesirable. The second one is that not all punctuation symbols and
+#special characters are removed, for instance, some examples are: guillemet "‹", numero symbol "№"
+#and uncommon currency symbols such as Thai bath "฿" or  Chinese yuan “¥”. Unlike the first case, in
+#the second one is also needed to remove the white space. Therefore, before applying the
+#"removePunctuation" function some symbols and special characters are going to be removed by using 
+#the R built-in function "gsub". In the first case leaving the white space and in the second not. 
+blogs_sample_5<-gsub("@|—|–|⁄", " ", blogs_sample_4)
+news_sample_5<-gsub("@|—|–|⁄"," ", news_sample_4)
+twitter_sample_5<-gsub("@|—|–|⁄", " ", twitter_sample_4)
+
+blogs_sample_6<-gsub("Ã|œ|Œ|ã|å|â|ã|å|¢|ë|í|€|£|®|°|¿|¾|¡|¯|“|«|‹|›|‘|’|“|”|•|†|‡|″|“|※|№|Nº|ª|²|‰|‱|″|‴|℗|℠|™|₳|฿|₵|₡|₢|₫|₯|₠|ƒ|€|₲|₴|₭|₺|£|ℳ|₥|₦|₧|₱|₰|៛|₹|₨|₪|৳|₸|₮|₩|¥","",blogs_sample_5)
+news_sample_6<-gsub("Ã|œ|Œ|ã|å|â|ã|å|¢|ë|í|€|£|®|°|¿|¾|¡|¯|“|«|‹|›|‘|’|“|”|•|†|‡|″|“|※|№|Nº|ª|²|‰|‱|″|‴|℗|℠|™|₳|฿|₵|₡|₢|₫|₯|₠|ƒ|€|₲|₴|₭|₺|£|ℳ|₥|₦|₧|₱|₰|៛|₹|₨|₪|৳|₸|₮|₩|¥","",news_sample_5)
+twitter_sample_6<-gsub("Ã|œ|Œ|ã|å|â|ã|å|¢|ë|í|€|£|®|°|¿|¾|¡|¯|“|«|‹|›|‘|’|“|”|•|†|‡|″|“|※|№|Nº|ª|²|‰|‱|″|‴|℗|℠|™|₳|฿|₵|₡|₢|₫|₯|₠|ƒ|€|₲|₴|₭|₺|£|ℳ|₥|₦|₧|₱|₰|៛|₹|₨|₪|৳|₸|₮|₩|¥","",twitter_sample_5)
+
+#Now, let's use the tm built-in "removePunctuation" function to remove more symbols that have no predictive
+#power, therefore, are unnecessary. The symbols to be eliminated include punctuation symbols
+#([,],(,),{,},:,.,!,«,»,?,',",;,/), common typography symbols (&,*,@,\,^,°,¡,¿,#,÷,×,º,%,+,=,¶,§,~,_,|,¦),
+#intellectual property symbols (©,®) and currency symbols (¤,¢,$,£).
+blogs_sample_7<-removePunctuation(blogs_sample_6)
+news_sample_7<-removePunctuation(news_sample_6)
+twitter_sample_7<-removePunctuation(twitter_sample_6)
+
+#A text document might has multiple white spaces among linguistics elements. Similarly, operations 
+#such as the previous ones might generate more white spaces. Therefore, is necessary to strip multiple
+#white spaces by collapsing them to a single one.
+blogs_sample_8<-stripWhitespace(blogs_sample_7)
+news_sample_8<-stripWhitespace(news_sample_7)
+twitter_sample_8<-stripWhitespace(twitter_sample_7)
+
+#Finally, to standardized the text is necessary to turn capital letters (uppercase) into small letters
+#(lowercase) , i.e., to avoid considering the same words as different. To achieve this the 
+#"tolower" base R function which allows translating characters from upper to lower case is going to be used. 
+blogs_sample_9<-tolower(blogs_sample_8)
+news_sample_9<-tolower(news_sample_8)
+twitter_sample_9<-tolower(twitter_sample_8)
+```
+
+####**4.2. Combine all sample data.**
+
+Now let's combine all sample data into one character vector for text mining issues.
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Let's turn the sample files into data frames. 
+blogs_sample_9_df<-data.frame(text=blogs_sample_9)
+news_sample_9_df<-data.frame(text=news_sample_9)
+twitter_sample_9_df<-data.frame(text=twitter_sample_9)
+
+#Let's combine all the sample data frames into one character vector.
+data_frame<-list(blogs_sample_9_df,news_sample_9_df,twitter_sample_9_df)
+all_sample_9<-vector()
+a=0
+b=0
+for (i in 1:length(data_frame)){
+  a<-a+1
+  for (j in 1:nrow(data_frame[[a]])){
+    b<-b+1
+    all_sample_9[b]<-as.character(data_frame[[i]][j,])
+  }
+}
+```
+
+####**4.3. Saving tidy sample files.**
+
+Now, let's save the files.  
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Saving sample files.
+writeLines(blogs_sample_9,"blogs_sample_9.txt", useBytes=TRUE)
+writeLines(news_sample_9, "news_sample_9.txt", useBytes=TRUE)
+writeLines(twitter_sample_9, "twitter_sample_9.txt", useBytes=TRUE)
+writeLines(all_sample_9, "all_sample_9.txt", useBytes=TRUE)
+```
+
+###**5. Exploratory data analysis and word frequencies study.**
+
+In this section of the report an exploratory data analysis and a word frequencies study are going to be carried out. The first one with the purpose of getting familiar with the data and the second to start building the predictive model. 
+
+In both cases, a "corpus" is going to be very useful. A "corpus" is the main R object/concept in the R package "tm", one of the most common package available for text data mining. It can be defined as a collection of documents containing (natural language) texts. In this case, the corpus will contain the three sample files in English that were saved above.
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Corpus.
+Corpus<-Corpus(DirSource(pattern="blogs_sample_9.txt|news_sample_9.txt|twitter_sample_9.txt"))
+```
+
+Now, let's read and load the files that are going to be used. 
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Let's load the sample files. 
+blogs_sample_9<-readLines("blogs_sample_9.txt", warn = FALSE)
+news_sample_9<-readLines("news_sample_9.txt", warn = FALSE)
+twitter_sample_9<-readLines("twitter_sample_9.txt", warn = FALSE)
+all_sample_9<-readLines("all_sample_9.txt", warn = FALSE)
+```
+
+####**5.1. Exploratory data analysis.**
+
+Now, the exploration of the text data is going to be carried out. The main idea of this step is to understand the statistical properties of the data and summarize their main characteristics to get familiar with it in order to uncover underlying structure, detect outliers, etc. In this case, the approach is focused on visual tools such as histograms and bar plots. 
+
+####**5.1.1. Some stats.**
+
+Similar to the case of the untidy text files is appropriate to get some stats such as size, number of lines, number of words, words by line, etc. in order to start getting familiar with the tidy text data, i.e., the final data with which the predictive model is going to be built. Therefore, after some code lines a table (data frame) with some stats is presented.  
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Size by sample files (MB). 
+blogs_sample_size<-round(file.info("blogs_sample_9.txt")$size/1024^2,1)
+news_sample_size<-round(file.info("news_sample_9.txt")$size/1024^2,1)
+twitter_sample_size<-round(file.info("twitter_sample_9.txt")$size/1024^2,1)
+
+#Number of lines by sample files (including white lines).
+blogs_sample_lines<-length(blogs_sample_9)
+news_sample_lines<-length(news_sample_9)
+twitter_sample_lines<-length(twitter_sample_9)
+
+#Number of words by sample files.
+blogs_sample_words<-sum(stri_count_words(blogs_sample_9))
+news_sample_words<-sum(stri_count_words(news_sample_9))
+twitter_sample_words<-sum(stri_count_words(twitter_sample_9))
+
+#Number of sentences by sample files.
+blogs_sample_sentences<-sum(stri_count_boundaries(blogs_sample_9, type="sentence"))
+news_sample_sentences<-sum(stri_count_boundaries(news_sample_9, type="sentence"))
+twitter_sample_sentences<-sum(stri_count_boundaries(twitter_sample_9, type="sentence"))
+
+#Number of characters by sample files (including white spaces).
+blogs_sample_chars<-sum(stri_count_boundaries(blogs_sample_9, type="character"))
+news_sample_chars<-sum(stri_count_boundaries(news_sample_9, type="character"))
+twitter_sample_chars<-sum(stri_count_boundaries(twitter_sample_9, type="character"))
+```
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Table with stats.
+stats_complete_files_2<-data.frame(File = c("blogs_sample", "news_sample", "twitter_sample"),
+                        Size = c(paste (blogs_sample_size, "MB"), paste(news_sample_size, "MB"), 
+                                 paste(twitter_sample_size, "MB")),
+                        Lines = c(blogs_sample_lines,news_sample_lines,twitter_sample_lines),
+                        Sentences = c(blogs_sample_sentences,news_sample_sentences,twitter_sample_sentences),
+                        Words = c(blogs_sample_words,news_sample_words,twitter_sample_words),
+                        chars = c(blogs_sample_chars,news_sample_chars,twitter_sample_chars),
+                        Sents_by_Line = c(round((blogs_sample_sentences/blogs_sample_lines),5),
+                                         round((news_sample_sentences/news_sample_lines),5),
+                                         round((twitter_sample_sentences/twitter_sample_lines),5)),
+                        Words_by_Sent = c(round((blogs_sample_words/blogs_sample_sentences),5),
+                                         round((news_sample_words/news_sample_sentences),5),
+                                         round((twitter_sample_words/twitter_sample_sentences),5)),
+                        Words_by_line = c(round((blogs_sample_words/blogs_sample_lines),5),
+                                         round((news_sample_words/news_sample_lines),5),
+                                         round((twitter_sample_words/twitter_sample_lines),5)),
+                        Chars_by_word = c(round((blogs_sample_chars/blogs_sample_words),5),
+                                         round((news_sample_chars/news_sample_words),5),
+                                         round((twitter_sample_chars/twitter_sample_words),5)))
+```
+
+```{r echo=FALSE, eval=FALSE, warning=FALSE, message=FALSE}
+#saving outcomes. 
+write.csv(stats_complete_files_2, "stats_complete_files_2.csv", fileEncoding = "UTF-8")
+```
+
+```{r echo=FALSE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Reading files to show outcomes. 
+read.csv("stats_complete_files_2.csv")
+```
+
+As seen on the table the stats show similar characteristics between the case of the original and samples ones. Twitter sample file is the one with more lines (236015), follow by the one from blogs (89929) and the one from news (7.726). One more time, as Twitter data is limited to 140 characters the blogs sample file has more words (2.620.048 vs 2.281.778, respectively). Likewise, another important fact is that Twitter data has the lowest average of words by line (approx. 9.67) which has sense due to the limitation of characters of the famous social network.        
+
+####**5.1.2. Histograms of words by line.**
+
+Words are the basic elements in text mining. So, now some histograms with the number of words by text files will be presented. Recall, the fact that a "line" means a text file line, so, it might be, for instance, a long paragraph with hundreds of words from a blog or news site or a tweet with only some. In total, four histograms will be plot, one for every text file (blogs, news and twitter) and one combined. 
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE, fig.height=10, fig.width=10}
+#Blogs, news & twitter sample words by line.
+blogs_sample_words_by_line<-stri_count_boundaries(blogs_sample_9, type="word")
+news_sample_words_by_line<-stri_count_boundaries(news_sample_9, type="word")
+twitter_sample_words_by_line<-stri_count_boundaries(twitter_sample_9, type="word")
+all_sample_words_by_line<-stri_count_boundaries(all_sample_9, type="word")
+
+#Setting graphical parameters: rows-by-columns plot array.
+par(mfrow=c(2,2))
+
+#1. Histogram of the blogs sample file's words by line. 
+hist(blogs_sample_words_by_line[which(blogs_sample_words_by_line<500)],main="Words by line distribution (blogs)",xlab="Words by line (<500 words)", breaks=15,col="yellow",labels=FALSE,cex.axis=0.8,cex.lab=0.8,cex.main=1.2)
+
+abline(v=mean(blogs_sample_words_by_line[which(blogs_sample_words_by_line<500)]),lwd=3,lty=1,col="black")
+
+text(x=190, y=40000, labels=paste("mean = ",round(mean(blogs_sample_words_by_line[which(blogs_sample_words_by_line<500)]),2)),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+text(x=253, y=35000, labels=paste("lines (total) = ",length(blogs_sample_words_by_line),"(100%)"),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+text(x=295, y=30000, labels=paste("lines (<500 words) = ", length(blogs_sample_words_by_line[which(blogs_sample_words_by_line<500)]),"(99.39%)"),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+#2. Histogram of news sample file's words by line.
+hist(news_sample_words_by_line[which(news_sample_words_by_line<500)],main="Words by line distribution (news)",xlab="Words by line (<500 words)", breaks=15,col="blue",labels=FALSE,cex.axis=0.8,cex.lab=0.8,cex.main=1.2)
+
+abline(v=mean(news_sample_words_by_line[which(news_sample_words_by_line<500)]),lwd=3,lty=1,col="black")
+
+text(x=180, y=2500, labels=paste("mean = ",round(mean(news_sample_words_by_line[which(news_sample_words_by_line<500)]),2)),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+text(x=235, y=2000, labels=paste("lines (total) = ",length(news_sample_words_by_line),"(100%)"),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+text(x=287, y=1500, labels=paste("lines (<500 words) = ", length(news_sample_words_by_line[which(news_sample_words_by_line<500)]),"(99.00%)"),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+#3. Histogram of twitter sample file's words by line.
+hist(twitter_sample_words_by_line[which(twitter_sample_words_by_line<500)],main="Words by line distribution (twitter)",xlab="Words by line",breaks=15,col="red",labels=FALSE,cex.axis=0.8,cex.lab=0.8,cex.main=1.2)
+
+abline(v=mean(twitter_sample_words_by_line[which(twitter_sample_words_by_line<500)]),lwd=3,lty=1,col="black")
+
+text(x=45, y=27000, labels=paste("mean = ",round(mean(twitter_sample_words_by_line[which(twitter_sample_words_by_line<500)]),2)),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+text(x=58, y=23000, labels=paste("lines (total) = ",length(twitter_sample_words_by_line),"(100%)"),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+#4. Histogram of all sample file's words by line.
+hist(all_sample_words_by_line[which(all_sample_words_by_line<500)],main="Words by line distribution (all)",xlab="Words by line",breaks=15,col="dark red",labels=FALSE,cex.axis=0.8,cex.lab=0.8,cex.main=1.2)
+
+abline(v=mean(all_sample_words_by_line[which(all_sample_words_by_line<500)]),lwd=3,lty=1,col="black")
+
+text(x=150, y=250000, labels=paste("mean = ",round(mean(all_sample_words_by_line[which(all_sample_words_by_line<500)]),2)),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+text(x=235, y=210000, labels=paste("lines (total) = ",length(all_sample_words_by_line),"(100%)"),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+
+text(x=290, y=170000, labels=paste("lines (<500 words) = ", length(all_sample_words_by_line[which(all_sample_words_by_line<500)]),"(99.99%)"),adj = NULL, pos = "3", offset = 0, vfont = NULL,cex = 0.75, col = "black", font = NULL)
+```
+
+####**5.2. Word frequencies study.**
+
+This section is the main one of the report. Here, the frequencies of the words are going to be studied which is very important for the design of the predictive model. The analysis will cover the case of one word (unigram) and the sequence of two (bigrams) and three words (trigrams). Likewise, some visualization tools such as cloud of words and correlation plots are going to be used. The focus will be in the case of unigrams to avoid an unpleasant extension of the report.
+
+####**5.2.1. Document Term Matrix.** 
+
+This is a matrix that has as rows the documents of the corpus and as columns theirs linguistic terms (basically words), therefore, the cells are the frequency of every term by document. This matrix will be calculated using the tools of the "tm" package.  
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#The DocumentTermMatrix has no many control options. One of them is the possibility of setting the lower and upper bounds of the global terms frequencies to be used. Terms appearing in the collection of documents less than the specified lower bound and more frequently than the upper will be ignored. In this case, all terms no matter their frequency are going to be considered.
+Document_Term_Matrix<-DocumentTermMatrix(Corpus,control=list(bounds=list(global=c(1,Inf))))
+
+#Now, in order to do some calculations let's turn the Document Term Matrix into a R matrix and then into a contingency table and, finally, into a data frame. 
+Document_Term_Matrix_2<-as.data.frame(as.table(Document_Term_Matrix))
+
+#Getting rid of the document column. 
+Document_Term_Matrix_3<-Document_Term_Matrix_2[,-1]
+
+#Setting columns names.
+colnames(Document_Term_Matrix_3)<-c("word","frequency")
+
+##Sum of documents frequencies by words.  
+Document_Term_Matrix_4<-aggregate(frequency ~ word, Document_Term_Matrix_3, sum)
+
+#Getting rid of term that are not useful, i.e., terms that contains symbols such as "ã", "â", "ë", "š", and "ž". These terms were not removed before.
+Document_Term_Matrix_5<-Document_Term_Matrix_4[-grep("ã|â|å|ë|š|ž|Ã|£|«|¢|\b|zz|aaa|rrr",Document_Term_Matrix_4$word),]
+```
+
+```{r echo=FALSE, eval=FALSE, warning=FALSE, message=FALSE}
+#saving outcomes. 
+write.csv(Document_Term_Matrix_5, "Document_Term_Matrix_5.csv", fileEncoding = "UTF-8",row.names=FALSE)
+```
+
+Let's explore the Document Term Matrix to know the frequency of five random words.
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Read and load the Document Term Matrix.
+Document_Term_Matrix_5<-read.csv("Document_Term_Matrix_5.csv")
+
+#Exploring the Document Term Matrix. 
+Document_Term_Matrix_5[sample(1:dim(Document_Term_Matrix_5)[1],5),1:2,]
+```
+
+Some facts about the final Document Term Matrix. 
+
+```{r echo=FALSE, eval=TRUE, warning=FALSE, message=FALSE}
+#Some facts about the final data frame.  
+paste ("The Document Term Matrix has", sum(Document_Term_Matrix_5$frequency),"words")
+paste ("The Document Term Matrix has", dim(Document_Term_Matrix_5)[1],"uniques words")
+```
+
+####**5.2.2. Tokenization and n-grams frequencies analysis.**
+
+According to Wikipedia, in the fields of computational linguistics and probability, an "n-gram" is a contiguous sequence of n items from a given sequence of text or speech. In this report, the cases of 1-grams(one item), 2-grams (two contiguous items) and 3-grams (three contiguous items) are going to be analysed. The process of getting the n-grams is called "Tokenization". For the case of 1-grams the tools of the very common "tm" package (07/2015) are going to be used, however, for the case of 2-grams and 3-grams will be the fresh "tokenizers" package (08/2016).      
+
+####**5.2.2.1. Analysis of 1-grams.**
+
+Let's start with the simplest case where there is only one word. Firstly, a vector with the frequency of every word is going to be calculated. Then, let's order these frequencies to know the most and the least frequent words.
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Let's sort the frequencies from the highest to the lowest (decreasing mode)
+frequency_of_words_sorted<-as.vector(Document_Term_Matrix_5[with(Document_Term_Matrix_5,order(-frequency)),])
+```
+
+```{r echo=FALSE, eval=FALSE, warning=FALSE, message=FALSE}
+#Saving outcomes. 
+write.csv(frequency_of_words_sorted, "frequency_of_words_sorted.csv", fileEncoding = "UTF-8",row.names = FALSE)
+```
+
+```{r echo=FALSE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Reading files to show outcomes. 
+frequency_of_words_sorted<-read.csv("frequency_of_words_sorted.csv")
+```
+
+####**5.2.2.1.1. Frequent words.**
+
+These are the most and least 5 frequent words.
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#Most frequent words.
+print(frequency_of_words_sorted[1:5,], row.names = FALSE)
+
+#Least frequent words.
+print(frequency_of_words_sorted[167874:167879,], row.names = FALSE)
+```  
+
+As we seen on the outcomes, the first five most frequent terms are very common words. However, on the opposite site, there are thousands of terms that only appear once. Sorted alphabetically the last five are very uncommon. 
+
+####**5.2.2.1.2. Frequency of words.**
+
+The next plot shows which are the 50 most frequent words considering all files.
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting graphical parameters: rows-by-columns plot array.
+par(mfrow=c(1,1))
+
+#Bar plot of words frequency in all files (1-grams)"
+barplot(frequency_of_words_sorted[1:50,2],  names.arg = frequency_of_words_sorted[1:50,1], 
+        width = 2, main = "Frequency of 50 most frequent words in all files (1-grams)",col=c("dark red"),
+        ylim=c(0,100000),xlab="Words (1-grams)",ylab="Frequency",las=2,cex.axis=0.8,
+        cex.lab=1,cex.main=0.8,cex.lab=0.8,cex = 0.8)
+abline(h=mean(frequency_of_words_sorted[1:50,2]),lwd=3,lty=1,col="black")
+text(90, 25000, paste("mean:",round(mean(frequency_of_words_sorted[1:50,2]),0)), pos=2,cex = 0.75, col = "black")
+```
+
+####**5.2.2.1.3. Cloud of words.**
+
+Another good alternative to get a visual overview of the frequency of words is a cloud of words. To get it the R package "wordcloud" is going to be used. In this case, the cloud of words is built considering all sample files together and only 150 words that have a frequency greater than 500.
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting graphical parameters: rows-by-columns plot array.
+par(mfrow=c(1,1))
+
+#Cloud of words for all files (1-grams)"
+wordcloud(frequency_of_words_sorted$word,frequency_of_words_sorted$frequency,min.freq=500,max.words=150,colors=brewer.pal(7, "Set1"))
+```
+
+####**5.2.2.1.4. Correlation plot.**
+
+Now, let's analyse the correlation among words. Two words are correlated is they appear together. If they do it always they have a correlation of 1 and if they never do it the value would be 0. In this case (all files), let's get a correlation plot among the words that has a frequency higher than 12000 instances and at least a value of 0.99, i.e., they almost appear together. To achieve this, the Document Term Matrix calculated some paragraphs above is going to be used.  
+
+```{r echo=TRUE, eval=FALSE , warning=FALSE, message=FALSE}
+#Setting graphical parameters: rows-by-columns plot array.
+par(mfrow=c(1,1))
+
+#Correlation plot.
+plot(Document_Term_Matrix, terms=findFreqTerms(Document_Term_Matrix, lowfreq=12000),      corThreshold=.99, attrs = list(edge = list(fontsize=100,labelfontsize=100),
+                                    node=list(fillcolor="green",fixedsize = TRUE,
+                                              shape = "ellipse",fontcolor="black")))
+```
+![](C:\Victor\Estudios\6_Data_Science\10_Capston_Project\files_Milestone_Report/Corr_Plot.png)
+
+####**5.2.2.1.5. Cumulative frequency plot.**
+
+The next plot is the cumulative frequency versus unique words. The main idea is to order the unique words decreasingly by its frequency and assign them the value of their cumulative frequency by adding its frequency and all previous ones. So, is possible to know how many words are needed to cover certain percentage of all instances (every time a word appears is an instance, so a word may have many instances). In this case, is required to determine the minimum number of words needed to cover 50% and 90% of all instances, respectively.      
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Data frame ordered by word frequency and cumulative frequency.
+frequency_of_words_sorted_cum_freq<-mutate(frequency_of_words_sorted,cum_fre=cumsum(frequency))
+
+#Adding numbers of words column.
+frequency_of_words_sorted_cum_freq$number_of_words<-seq.int(nrow(frequency_of_words_sorted_cum_freq))
+```
+
+```{r echo=FALSE, eval=FALSE, warning=FALSE, message=FALSE}
+#Saving outcomes. 
+write.csv(frequency_of_words_sorted_cum_freq, "frequency_of_words_sorted_cum_freq.csv", fileEncoding = "UTF-8", row.names = FALSE)
+```
+
+```{r echo=FALSE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Reading files to show outcomes. 
+frequency_of_words_sorted_cum_freq<-read.csv("frequency_of_words_sorted_cum_freq.csv")
+```
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#First lines of the data frame with the cumulative frequencies.
+head(frequency_of_words_sorted_cum_freq)
+```
+
+In the last table is possible to observe which are the first 6 most frequent with its cumulative frequency.
+
+The next plot shows the cumulative frequency versus unique words
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting graphical parameters: rows-by-columns plot array.
+par(mfrow=c(1,1))
+
+#cumulative frequency versus unique words plot.
+plot(frequency_of_words_sorted_cum_freq$number_of_words,frequency_of_words_sorted_cum_freq$cum_fre,type="l",main="Cumulative Frequency by unique words",xlab="Number of unique words",ylab="Cumulative frequency (word instances)",lwd=3,las=2,cex.axis=0.8, cex.lab=0.8, cex.main=0.8, cex.lab=0.8, cex=0.8)
+
+#Adding threshold lines. 
+abline(h=max(frequency_of_words_sorted_cum_freq$cum_fre)*0.50,lwd=3,lty=1,col="blue")
+abline(h=max(frequency_of_words_sorted_cum_freq$cum_fre)*0.90,lwd=3,lty=1,col="red")
+text(100000, 2100000, "50%", pos=2,cex = 0.75, col = "blue")
+text(100000, 3550000, "90%", pos=2,cex = 0.75, col = "red")
+```
+
+Now, let's calculate then number of unique words to cover 50% and 90% of the instances of words.
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE}
+#Number of unique words to cover 50% of the instances of words.
+c=1
+while(frequency_of_words_sorted_cum_freq$cum_fre[c]<sum(frequency_of_words_sorted_cum_freq$frequency)*0.5){
+  c<-c+1
+}
+#Number of unique words to cover 90% of the instances of words.
+d=1
+while(frequency_of_words_sorted_cum_freq$cum_fre[d]<sum(frequency_of_words_sorted_cum_freq$frequency)*0.9){
+  d<-d+1
+}
+paste("To cover 50% of the all word instances are needed at least",c,"unique words and to cover 90% at least",d)
+```
+
+####**5.2.2.2. Analysis of 2-grams and 3 grams.**
+
+Now, let's study the cases of 2-grams and 3 grams. However, in this case only bars plots with frequencies are going to be presented. The reason is to avoid an unpleasant extension of the report.
+
+```{r echo=TRUE, eval=FALSE, warning=FALSE, message=FALSE}
+#Tokenization.
+bigrams<-tokenize_ngrams(all_sample_9, lowercase = TRUE, n = 2, n_min = 2, ngram_delim = " ", simplify = FALSE)
+trigrams<-tokenize_ngrams(all_sample_9, lowercase = TRUE, n = 3, n_min = 3, ngram_delim = " ", simplify = FALSE)
+
+#The result of tokenization is a list of character vectors, so let's unlist them 
+#to produce a vector which contains all the n-grams (atomic components) which occur in all of them.
+#Then, let's cross-classify the n-grams by building a contingency table. Afterwards, let's turn
+#these tables into data frames that will be rearranged into an descending order. Finally, let's 
+#get rid of the rows with n-grams that have symbols such as "Ã", "«" or "¢".
+
+#Bigrams.
+data_frames_bigrams<-as.data.frame(table(unlist(bigrams)))
+colnames(data_frames_bigrams)<-c("bigrams","frequency")
+data_frames_bigrams_ordered<-data_frames_bigrams[with(data_frames_bigrams,order(-frequency)),]
+data_frames_bigrams_ordered_2<-data_frames_bigrams_ordered[-grep("Ã|£|«|¢",data_frames_bigrams_ordered$bigrams),]
+
+#Trigrams.
+data_frames_trigrams<-as.data.frame(table(unlist(trigrams)))
+colnames(data_frames_trigrams)<-c("trigrams","frequency")
+data_frames_trigrams_ordered<-data_frames_trigrams[with(data_frames_trigrams,order(-frequency)),]
+data_frames_trigrams_ordered_2<-data_frames_trigrams_ordered[-grep("Ã|£|«|¢",data_frames_trigrams_ordered$trigrams),]
+```
+
+```{r echo=FALSE, eval=FALSE, warning=FALSE, message=FALSE}
+#Saving outcomes. 
+write.csv(data_frames_bigrams_ordered_2, "data_frames_bigrams_ordered_2.csv", fileEncoding = "UTF-8", row.names = FALSE)
+write.csv(data_frames_trigrams_ordered_2, "data_frames_trigrams_ordered_2.csv", fileEncoding = "UTF-8", row.names = FALSE)
+```
+
+```{r echo=FALSE, eval=TRUE, warning=FALSE, message=FALSE}
+#Setting working directory.
+setwd("C:/Victor/Estudios/6_Data_Science/10_Capston_Project/files_Milestone_Report/")
+
+#Reading files to show outcomes. 
+data_frames_bigrams_ordered_2<-read.csv("data_frames_bigrams_ordered_2.csv",nrow=50)
+data_frames_trigrams_ordered_2<-read.csv("data_frames_trigrams_ordered_2.csv",nrow=50)
+```
+
+```{r echo=TRUE, eval=TRUE, warning=FALSE, message=FALSE, fig.height=10}
+#Setting graphical parameters: rows-by-columns plot array.
+par(mfrow=c(2,1))
+
+#Bar plot of word frequency in all files (2-grams)"
+barplot(t(data_frames_bigrams_ordered_2[1:50,2]),  names.arg = t(data_frames_bigrams_ordered_2[1:50,1]), 
+        width = 2, main = "Frequency of words in all files (2-grams)",col=c("dark red"),
+        ylim=c(0,5000),xlab="",ylab="Frequency",las=2,cex.axis=0.8,
+        cex.lab=1.2,cex.main=0.8,cex.lab=0.8,cex = 0.8)
+abline(h=mean(data_frames_bigrams_ordered_2[1:50,2]),lwd=3,lty=1,col="black")
+text(90, 2000, paste("mean:",round(mean(data_frames_bigrams_ordered_2[1:50,2]),0)), pos=2,cex = 0.75, col = "black")
+
+#Bar plot of word frequency in all files (3-grams)"
+barplot(t(data_frames_trigrams_ordered_2[1:50,2]),  names.arg = t(data_frames_trigrams_ordered_2[1:50,1]), 
+        width = 2, main = "Frequency of words in all files (3-grams)",col=c("dark red"),
+        ylim=c(0,800),xlab="",ylab="Frequency",las=2,cex.axis=0.8,
+        cex.lab=1.2,cex.main=0.8,cex.lab=0.8,cex = 0.8)
+abline(h=mean(data_frames_trigrams_ordered_2[1:50,2]),lwd=3,lty=1,col="black")
+text(90, 250, paste("mean:",round(mean(data_frames_trigrams_ordered_2[1:50,2]),0)), pos=2,cex = 0.75, col = "black")
+```
+
+###**6. Miscellaneous.**
+
+In this section, some final questions about text mining and Natural Language Processing are presented. 
+
+####**1. How is possible to evaluate how many of the words come from foreign languages?.**
+
+To identify words than come from another language one approach might be:
+
+(@) Read the text files.
+(@) Clean the files.
+(@) Turn the files into data frames.
+(@) Combine them all into one character vector.
+(@) Tokenize to get unigrams (mainly words).
+(@) Extraction of foreign words by using functions such as grep.
+
+####**2. How to increase the coverage by identifying words that may not be in the corpora or by using a smaller number of words in the dictionary to cover the same number of phrases?.**
+
+One option to increase the coverage might be to increase the dictionary of stop words because they don't have a high predictive power. Another option is to get rid of the word with low frequency. 
+
+###**7. Next steps.**
+
+The goal of the capstone in the Data Science Specialization is to create a public data product. In this case, this product is a shiny app to predict the next word after typing others. Therefore, the next steps are: 
+
+1. Use (get a new one) the sample of the data to build the predictive models. 
+2. Clean the data (numbers, stop words, profanity, etc.).
+3. Get 2-grams and 3-grams data sets. 
+4. Build some predictive models with these data sets using some algorithms. 
+5. Evaluate the performance of the predictive models. 
+6. Design a shiny app (user interface and server), following the process described in this report. 7. Pitch this app by presenting a summary, a description and, finally, an example of codes.
+8. Celebrate the finalization of the specialization after one year studying and working hard. :)
+
+###**8. Findings.**
+
+The main findings in this report are: 
+
+1. The three source of text are different in style and other characteristics. Twitter data have and extension limit of 140 characters do to the restriction of the social network. 
+2. The three original data files together have more than 3 million lines of text, being the Twitter data the largest one with more than 2.3 million. 
+3. The original blogs text file have the highest number of words by line with 41.75 and the fewest is the case of Twitter data with only 12.75.   
+4. Cleaning the data to build the predictive models was fairly time consuming and fastidious but is worth doing to assure a high quality predictive model and proper analyses. To achieve this goal were used different tools.  
+5. The mean of words by line considering all the sample files is 24.38.
+6. With the "tm" package and the Document Term Matrix, the total of unigrams (words), after some cleaning, was 167.879. The most frequent were: you, have, the, your and all, respectively. 
+7. Likewise, to cover 50% of the all the 167.879 word instances are needed at least 782 unique words and to cover 90% at least 15.205.   
+8. With the "tokenizers" package the most common bigrams (two contiguous words) were: i think, i love, i know, i just and i can. 
+9. Finally, the most common trigrams: i think i, i know i, i feel like, i wish i and i thought i.

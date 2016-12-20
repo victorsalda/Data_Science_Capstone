@@ -1,0 +1,83 @@
+---
+title: "Capstone Project: NLP"
+author: "Victor D. Saldaña C."
+date: "December, 2016."
+output: ioslides_presentation
+logo: Foto.jpg
+---
+
+## Introduction. {.smaller}
+
+<div text align="justify">
+The goal of the capstone in the Data Science Specialization is to demonstrate the skill 
+set obtained along the courses by creating a public data product. In this case, the product 
+is a shiny app that will be used to predict the next word after typing a sentence 
+(similar to those on mobile devices).
+
+The data to train and test the model, specifically, a Statistical Language Model, come from the HC corpora
+web site (http://www.corpora.heliohost.org). There were available three text files (blogs, news and tweets), but only 10% of the 
+lines of each files were used. The key idea was to avoid a long processing time while loading data. Likewise, the capstone is presented 
+in partnership with "Swiftkey" (https://swiftkey.com), one of the worldwide leaders in using data science
+techniques to build keyboards for Android and iOS devices. 
+
+In order to develop the app, first the data was explored (https://rpubs.com/victorsalda/234366). Then, 
+after considering several models such as the n-grams, neural network and positional statistical language models the 
+first one was used. Likewise, to make the app run softly only a database (.csv files) with 2-grams (bigrams) and
+3-grams (trigrams) were used.
+</div>
+
+<p><b>The shiny app may be found at:</b>
+https://victorsalda.shinyapps.io/data_science_capstone/
+</p> 
+
+
+## Algorithm. {.smaller} 
+
+<div text align="justify">
+The algorithm used is based on the N-grams Statistical Language Model. A n-gram is basically a contiguous sequence
+of "n" words from a given stream. Therefore, an N-gram model pretends to assigns to each n-gram a probability. This
+is one of the most important, simplest, powerful and useful statistical language models.
+</div>
+
+<div text align="left">
+<p><b>The codes of the shiny app may be found at:</b>
+https://github.com/victorsalda/Data_Science_Capstone
+</p> 
+</div>
+
+## Description and instructions. {.smaller}
+
+<div text align="justify">
+The app have been developed using the "fluidPage" layout ignoring the main panel and only using the side bar one. It has a text input bar, 
+a summit button and 10 action buttons where the predicted words are displayed. These buttons don't execute any action (right now) but they
+were used thinking of next versions of the app (v2.0, v3.0,...).
+</div>
+
+<div align="center">
+<img src="App.jpg" width=672. height=143.5>
+</div>
+
+<p><b>To use the app just follow next steps:</b></p>
+
+<div class="list">
+1. Input or paste the text to be evaluated in the input bar.
+2. Press summit button. 
+3. Wait some seconds and the predicted words will appear. 
+4. Erase the text input and star again.
+</div>
+
+##How does the shiny app work? {.smaller}
+
+<div text align="justify">
+The algorithm developed take the input text typed by the user in the text input bar and make it tidy by cleaning it. Then, it takes the last and 
+two last words of the cleaned text and use them (applying regular expressions) to match the databases of bigrams and trigrams (.csv files), respectively.
+Recall that these databases were obtained with the sample data (https://rpubs.com/victorsalda/234366) and store a set of n-grams ordered decreasingly.
+Most of these bi and trigrams only appear once, so there were taken out to make the databases light and not so heavy. The algorithm first searches for the
+next word in the trigram database and if doesn't find any match goes to the bigram one.
+</div>
+
+<div text align="justify">
+However, no matter the size of the training sample there might be <b>unseen bi and trigrams</b> because any language is creative and immeasurable. 
+To deal with the unseen n-grams some models such as the Stupid Backoff and Kneser-Ney models have been developed. The process of dealing with 
+unseen ngrams is called "smoothing". However, in this case the smoothing was carried out using another approach. A character vector was created with the most 20 common English words, so every time there is not any match in the trigrams or bigrams database one of these words is assigned randomly (this part of the algorithm in going to be improve in the subsequent version v2.0).
+</div>
