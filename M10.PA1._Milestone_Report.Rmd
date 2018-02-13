@@ -20,7 +20,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ####**Capstone.**
 
-The goal of the capstone in the Data Science Specialization is to demonstrate the skill set obtained along the courses by creating a public data product. In this case, the product is a predictive text model application similar to the one on mobile devices. The data come from the HC corpora web site (http://www.corpora.heliohost.org) where is possible to download (freely) a collection of corpora (samples of real world texts) for more than 60 available languages. The capstone is presented in partnership with "Swiftkey" (https://swiftkey.com), one of the worldwide leaders in using data science techniques to build keyboards for Android and iOS devices.
+The goal of the capstone in the Data Science Specialization is to demonstrate the skill set obtained along the courses by creating a public data product. In this case, the product is a predictive text model' application ssimilar to the one on mobile devices. The data come from the HC corpora web site (http://www.corpora.heliohost.org) where is possible to download (freely) a collection of corpora (samples of real world texts) for more than 60 available languages. The capstone is presented in partnership with "Swiftkey" (https://swiftkey.com), one of the worldwide leaders in using data science techniques to build keyboards for Android and iOS devices.
 
 ####**Milestone Report.**
 
